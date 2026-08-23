@@ -6,3 +6,4 @@
 - Unstayed mast is 41% bigger in diameter, weight is double.
   - It WILL affect the stability of your boat.
 - Unstayed mast can only install Junk sails, Junk square and fin sail (You cannot install junk gaff)
+- Unstayed mast cannot use crow nest and shroud telltales option(duh)
