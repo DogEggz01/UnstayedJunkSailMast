@@ -142,6 +142,7 @@ namespace UnstayedJunkSailMast
 
         internal bool TryClaim(
             BoatPartOption source,
+            UnstayedMastSourceIdentity identity,
             out int mastIndex,
             out bool usesFixedVanillaIndex)
         {
@@ -173,20 +174,21 @@ namespace UnstayedJunkSailMast
             }
 
             return TryClaimExtended(
-                UnstayedMastBuilder.CreateSourceId(source),
+                identity,
                 out mastIndex);
         }
 
         internal bool TryClaimExtended(
-            string sourceId,
+            UnstayedMastSourceIdentity identity,
             out int mastIndex)
         {
             mastIndex = -1;
-            if (string.IsNullOrEmpty(sourceId))
+            if (identity == null || string.IsNullOrEmpty(identity.StableId))
             {
                 return false;
             }
 
+            string sourceId = identity.StableId;
             int mappedIndex;
             string mappedOwner;
             if (extendedMappings.TryGetValue(sourceId, out mappedIndex) &&
@@ -204,6 +206,30 @@ namespace UnstayedJunkSailMast
 
                 occupiedIndices.Add(mappedIndex);
                 mastIndex = mappedIndex;
+                return true;
+            }
+
+            string legacySourceId;
+            if (TryFindLegacyMapping(identity, out legacySourceId))
+            {
+                mappedIndex = extendedMappings[legacySourceId];
+                if (occupiedIndices.Contains(mappedIndex))
+                {
+                    Plugin.LogSource?.LogError(
+                        "Skipped duplicate Expansion mast source identity " +
+                        sourceId + ".");
+                    return false;
+                }
+
+                extendedMappings.Remove(legacySourceId);
+                extendedMappings[sourceId] = mappedIndex;
+                extendedOwners[mappedIndex] = sourceId;
+                occupiedIndices.Add(mappedIndex);
+                mappingsChanged = true;
+                mastIndex = mappedIndex;
+                Plugin.LogSource?.LogInfo(
+                    "Migrated an Expansion mast source key to v2 at index " +
+                    mappedIndex + ".");
                 return true;
             }
 
@@ -228,6 +254,45 @@ namespace UnstayedJunkSailMast
             Plugin.LogSource?.LogError(
                 "No extended mast index remains in the 96-127 range for " +
                 sourceId + ".");
+            return false;
+        }
+
+        private bool TryFindLegacyMapping(
+            UnstayedMastSourceIdentity identity,
+            out string legacySourceId)
+        {
+            legacySourceId = null;
+            int bestScore = 0;
+            bool ambiguous = false;
+            foreach (KeyValuePair<string, int> mapping in extendedMappings)
+            {
+                int score = identity.GetPersistedMatchScore(mapping.Key);
+                if (score <= 0 || mapping.Key == identity.StableId)
+                {
+                    continue;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    legacySourceId = mapping.Key;
+                    ambiguous = false;
+                }
+                else if (score == bestScore)
+                {
+                    ambiguous = true;
+                }
+            }
+
+            if (!ambiguous)
+            {
+                return legacySourceId != null;
+            }
+
+            Plugin.LogSource?.LogWarning(
+                "Did not migrate an ambiguous legacy Expansion mast source " +
+                "key for " + identity.StableId + ".");
+            legacySourceId = null;
             return false;
         }
 
@@ -398,10 +463,14 @@ namespace UnstayedJunkSailMast
                 Mast mast = mastProfile.UnstayedOption != null
                     ? mastProfile.UnstayedOption.GetComponent<Mast>()
                     : null;
+                UnstayedMastSourceIdentity identity =
+                    mastProfile.Marker != null
+                        ? mastProfile.Marker.Identity
+                        : null;
                 int mastIndex;
-                if (mast == null ||
+                if (mast == null || identity == null ||
                     !allocator.TryClaimExtended(
-                        mastProfile.SourceId,
+                        identity,
                         out mastIndex))
                 {
                     continue;

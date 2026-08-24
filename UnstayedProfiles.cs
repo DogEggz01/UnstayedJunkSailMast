@@ -5,7 +5,7 @@ namespace UnstayedJunkSailMast
 {
     internal sealed class UnstayedMastMarker : MonoBehaviour
     {
-        internal string SourceId;
+        internal UnstayedMastSourceIdentity Identity;
     }
 
     internal sealed class EmptyRestrictedPartMarker : MonoBehaviour
@@ -44,7 +44,7 @@ namespace UnstayedJunkSailMast
     {
         internal BoatPart MastPart;
         internal BoatPartOption UnstayedOption;
-        internal string SourceId;
+        internal UnstayedMastMarker Marker;
         internal bool UsesFixedVanillaIndex;
         internal List<RestrictedPartSelection> RestrictedSelections;
     }

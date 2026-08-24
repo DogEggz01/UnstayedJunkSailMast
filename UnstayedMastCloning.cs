@@ -22,6 +22,7 @@ namespace UnstayedJunkSailMast
             BoatRefs refs,
             int sceneIndex,
             int mastIndex,
+            UnstayedMastSourceIdentity identity,
             List<RestrictedPartSelection> restrictedSelections)
         {
             Mast sourceMast = sourceOption.GetComponent<Mast>();
@@ -37,7 +38,6 @@ namespace UnstayedJunkSailMast
                 sourceOption.optionName)
                 ? sourceOption.name
                 : sourceOption.optionName;
-            string sourceId = CreateSourceId(sourceOption);
             Transform cloneTransform = null;
             Transform cloneWalk = null;
             try
@@ -106,7 +106,7 @@ namespace UnstayedJunkSailMast
 
                 UnstayedMastMarker marker = cloneTransform.gameObject
                     .AddComponent<UnstayedMastMarker>();
-                marker.SourceId = sourceId;
+                marker.Identity = identity;
                 return cloneOption;
             }
             catch (Exception exception)
@@ -431,14 +431,6 @@ namespace UnstayedJunkSailMast
             return radial.sqrMagnitude > 0.000001f &&
                    radial.sqrMagnitude <=
                        MaxSurfaceFittingOffset * MaxSurfaceFittingOffset;
-        }
-
-        internal static string CreateSourceId(BoatPartOption source)
-        {
-            Mast mast = source.GetComponent<Mast>();
-            return UnstayedNameRules.Normalize(source.optionName) + "|" +
-                   UnstayedNameRules.Normalize(source.name) + "|" +
-                   (mast != null ? mast.orderIndex.ToString() : "-");
         }
 
         private static GameObject[] FilterChildOptions(

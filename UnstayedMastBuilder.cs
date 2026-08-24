@@ -101,10 +101,17 @@ namespace UnstayedJunkSailMast
                 for (int j = 0; j < sources.Count; j++)
                 {
                     BoatPartOption source = sources[j];
+                    UnstayedMastSourceIdentity identity =
+                        UnstayedMastSourceIdentity.Create(
+                            source,
+                            mastPart,
+                            customization.transform,
+                            saveable.sceneIndex);
                     int mastIndex;
                     bool usesFixedVanillaIndex;
                     if (!indexAllocator.TryClaim(
                             source,
+                            identity,
                             out mastIndex,
                             out usesFixedVanillaIndex))
                     {
@@ -116,6 +123,7 @@ namespace UnstayedJunkSailMast
                         refs,
                         saveable.sceneIndex,
                         mastIndex,
+                        identity,
                         restrictedSelections);
                     if (clone == null)
                     {
@@ -128,7 +136,7 @@ namespace UnstayedJunkSailMast
                     {
                         MastPart = mastPart,
                         UnstayedOption = clone,
-                        SourceId = CreateSourceId(source),
+                        Marker = clone.GetComponent<UnstayedMastMarker>(),
                         UsesFixedVanillaIndex = usesFixedVanillaIndex,
                         RestrictedSelections =
                             new List<RestrictedPartSelection>(

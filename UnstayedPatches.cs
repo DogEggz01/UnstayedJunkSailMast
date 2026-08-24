@@ -357,11 +357,14 @@ namespace UnstayedJunkSailMast
                     continue;
                 }
 
-                if (!string.IsNullOrEmpty(mast.SourceId))
+                UnstayedMastSourceIdentity identity =
+                    mast.Marker != null ? mast.Marker.Identity : null;
+                if (identity != null &&
+                    !string.IsNullOrEmpty(identity.StableId))
                 {
                     records.Add(
                         partIndex + FieldSeparator.ToString() +
-                        Uri.EscapeDataString(mast.SourceId));
+                        Uri.EscapeDataString(identity.StableId));
                 }
             }
 
@@ -426,27 +429,11 @@ namespace UnstayedJunkSailMast
                     continue;
                 }
 
-                UnstayedMastProfile match = null;
-                for (int j = 0; j < profile.Masts.Count; j++)
-                {
-                    UnstayedMastProfile mast = profile.Masts[j];
-                    if (mast.SourceId != sourceId)
-                    {
-                        continue;
-                    }
-
-                    if (match == null)
-                    {
-                        match = mast;
-                    }
-
-                    if (parts.availableParts.IndexOf(mast.MastPart) ==
-                        partIndex)
-                    {
-                        match = mast;
-                        break;
-                    }
-                }
+                UnstayedMastProfile match = FindMatchingMastProfile(
+                    profile,
+                    parts,
+                    sourceId,
+                    partIndex);
 
                 if (match == null)
                 {
@@ -466,6 +453,63 @@ namespace UnstayedJunkSailMast
                         currentOptionIndex;
                 }
             }
+        }
+
+        private static UnstayedMastProfile FindMatchingMastProfile(
+            UnstayedBoatProfile profile,
+            BoatCustomParts parts,
+            string persistedSourceId,
+            int savedPartIndex)
+        {
+            UnstayedMastProfile match = null;
+            int bestScore = 0;
+            bool ambiguous = false;
+            for (int i = 0; i < profile.Masts.Count; i++)
+            {
+                UnstayedMastProfile candidate = profile.Masts[i];
+                UnstayedMastSourceIdentity identity =
+                    candidate.Marker != null
+                        ? candidate.Marker.Identity
+                        : null;
+                if (identity == null)
+                {
+                    continue;
+                }
+
+                int score = identity.GetPersistedMatchScore(
+                    persistedSourceId);
+                if (score <= 0)
+                {
+                    continue;
+                }
+
+                if (parts.availableParts.IndexOf(candidate.MastPart) ==
+                    savedPartIndex)
+                {
+                    score += 5;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    match = candidate;
+                    ambiguous = false;
+                }
+                else if (score == bestScore)
+                {
+                    ambiguous = true;
+                }
+            }
+
+            if (!ambiguous)
+            {
+                return match;
+            }
+
+            Plugin.LogSource?.LogWarning(
+                "Did not remap an ambiguous saved unstayed mast source " +
+                "identity: " + persistedSourceId + ".");
+            return null;
         }
 
         private static void MigrateMastIndices(
