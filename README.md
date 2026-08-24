@@ -8,4 +8,4 @@
 - Unstayed mast can only install Junk sails, Junk square and fin sail (You cannot install junk gaff)
 - Unstayed mast cannot use crow nest, stays(so no jibs/staysail) and shroud telltales option(duh)
 
-# REQUIRED SHIPYARD EXPANSION TO WORK
+## UPDATED FROM OLDER THAN 1.1.0 VERSION WILL CLEAR YOUR SAIL ON UNSTAYED MAST
