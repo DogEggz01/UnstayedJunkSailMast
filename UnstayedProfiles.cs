@@ -44,14 +44,18 @@ namespace UnstayedJunkSailMast
     {
         internal BoatPart MastPart;
         internal BoatPartOption UnstayedOption;
+        internal string SourceId;
+        internal bool UsesFixedVanillaIndex;
         internal List<RestrictedPartSelection> RestrictedSelections;
     }
 
     internal sealed class UnstayedBoatProfile
     {
         internal BoatCustomParts Parts;
+        internal BoatRefs Refs;
         internal int SceneIndex;
         internal List<UnstayedMastProfile> Masts;
+        internal List<int> RetiredMastIndices;
     }
 
     internal static class UnstayedBoatRegistry
@@ -80,6 +84,11 @@ namespace UnstayedJunkSailMast
         internal static void Unregister(BoatCustomParts parts)
         {
             Profiles.Remove(parts);
+        }
+
+        internal static List<UnstayedBoatProfile> GetProfiles()
+        {
+            return new List<UnstayedBoatProfile>(Profiles.Values);
         }
 
         internal static void Clear()

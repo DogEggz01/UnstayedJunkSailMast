@@ -6,9 +6,6 @@ namespace UnstayedJunkSailMast
 {
     internal static partial class UnstayedMastBuilder
     {
-        private const int FirstReservedMastIndex = 96;
-        private const int MastArrayCapacity = 128;
-
         private static readonly string[] SmallJunkAnchorPaths =
         {
             "junk small/structure/mast",
@@ -69,7 +66,9 @@ namespace UnstayedJunkSailMast
             for (int i = 0; i < targetParts.Count; i++)
             {
                 sourcesByMastPart[targetParts[i]] =
-                    GetEligibleSources(targetParts[i]);
+                    GetEligibleSources(
+                        targetParts[i],
+                        saveable.sceneIndex);
             }
 
             List<RestrictedPartSelection> allRestrictedSelections =
@@ -80,7 +79,10 @@ namespace UnstayedJunkSailMast
                     sourcesByMastPart);
             List<UnstayedMastProfile> mastProfiles =
                 new List<UnstayedMastProfile>();
-            int nextMastIndex = FirstReservedMastIndex;
+            UnstayedMastIndexAllocator indexAllocator =
+                new UnstayedMastIndexAllocator(
+                    customization.transform,
+                    saveable.sceneIndex);
 
             for (int i = 0; i < targetParts.Count; i++)
             {
@@ -99,7 +101,16 @@ namespace UnstayedJunkSailMast
                 for (int j = 0; j < sources.Count; j++)
                 {
                     BoatPartOption source = sources[j];
-                    int mastIndex = ClaimMastIndex(refs, ref nextMastIndex);
+                    int mastIndex;
+                    bool usesFixedVanillaIndex;
+                    if (!indexAllocator.TryClaim(
+                            source,
+                            out mastIndex,
+                            out usesFixedVanillaIndex))
+                    {
+                        continue;
+                    }
+
                     BoatPartOption clone = CloneUnstayedMast(
                         source,
                         refs,
@@ -117,12 +128,16 @@ namespace UnstayedJunkSailMast
                     {
                         MastPart = mastPart,
                         UnstayedOption = clone,
+                        SourceId = CreateSourceId(source),
+                        UsesFixedVanillaIndex = usesFixedVanillaIndex,
                         RestrictedSelections =
                             new List<RestrictedPartSelection>(
                                 restrictedSelections)
                     });
                 }
             }
+
+            indexAllocator.Commit();
 
             if (mastProfiles.Count == 0)
             {
@@ -139,13 +154,27 @@ namespace UnstayedJunkSailMast
             UnstayedBoatRegistry.Register(new UnstayedBoatProfile
             {
                 Parts = parts,
+                Refs = refs,
                 SceneIndex = saveable.sceneIndex,
-                Masts = mastProfiles
+                Masts = mastProfiles,
+                RetiredMastIndices = indexAllocator.GetRetiredIndices()
             });
+
+            int fixedVanillaCount = 0;
+            for (int i = 0; i < mastProfiles.Count; i++)
+            {
+                if (mastProfiles[i].UsesFixedVanillaIndex)
+                {
+                    fixedVanillaCount++;
+                }
+            }
 
             Plugin.LogSource?.LogInfo(
                 "Added " + mastProfiles.Count + " unstayed mast option(s) to " +
-                customization.name + " (scene " + saveable.sceneIndex + ").");
+                customization.name + " (scene " + saveable.sceneIndex +
+                "): " + fixedVanillaCount + " fixed vanilla, " +
+                (mastProfiles.Count - fixedVanillaCount) +
+                " extended.");
         }
 
         private static bool IsSupportedBoat(int sceneIndex)
@@ -157,13 +186,17 @@ namespace UnstayedJunkSailMast
         {
             if (refs.masts == null)
             {
-                refs.masts = new Mast[MastArrayCapacity];
+                refs.masts = new Mast[
+                    UnstayedMastIndexRules.MastArrayCapacity];
                 return;
             }
 
-            if (refs.masts.Length < MastArrayCapacity)
+            if (refs.masts.Length <
+                UnstayedMastIndexRules.MastArrayCapacity)
             {
-                Array.Resize(ref refs.masts, MastArrayCapacity);
+                Array.Resize(
+                    ref refs.masts,
+                    UnstayedMastIndexRules.MastArrayCapacity);
             }
         }
 
@@ -202,7 +235,7 @@ namespace UnstayedJunkSailMast
             {
                 BoatPart part = parts.availableParts[i];
                 if (part == null || part.category != 0 ||
-                    !ContainsEligibleMast(part))
+                    !ContainsEligibleMast(part, sceneIndex))
                 {
                     continue;
                 }
@@ -272,7 +305,9 @@ namespace UnstayedJunkSailMast
             return null;
         }
 
-        private static bool ContainsEligibleMast(BoatPart part)
+        private static bool ContainsEligibleMast(
+            BoatPart part,
+            int sceneIndex)
         {
             if (part.partOptions == null)
             {
@@ -281,7 +316,9 @@ namespace UnstayedJunkSailMast
 
             for (int i = 0; i < part.partOptions.Count; i++)
             {
-                if (IsEligibleSource(part.partOptions[i]))
+                if (ShouldCloneSource(
+                        part.partOptions[i],
+                        sceneIndex))
                 {
                     return true;
                 }
@@ -290,19 +327,38 @@ namespace UnstayedJunkSailMast
             return false;
         }
 
-        private static List<BoatPartOption> GetEligibleSources(BoatPart part)
+        private static List<BoatPartOption> GetEligibleSources(
+            BoatPart part,
+            int sceneIndex)
         {
             List<BoatPartOption> result = new List<BoatPartOption>();
             BoatPartOption[] snapshot = part.partOptions.ToArray();
             for (int i = 0; i < snapshot.Length; i++)
             {
-                if (IsEligibleSource(snapshot[i]))
+                if (ShouldCloneSource(snapshot[i], sceneIndex))
                 {
                     result.Add(snapshot[i]);
                 }
             }
 
             return result;
+        }
+
+        private static bool ShouldCloneSource(
+            BoatPartOption option,
+            int sceneIndex)
+        {
+            if (!IsEligibleSource(option))
+            {
+                return false;
+            }
+
+            int fixedIndex;
+            return Plugin.ShipyardExpansionLoaded ||
+                   UnstayedMastIndexRules.TryGetFixedVanillaIndex(
+                       sceneIndex,
+                       option,
+                       out fixedIndex);
         }
 
         private static bool IsEligibleSource(BoatPartOption option)
@@ -328,23 +384,6 @@ namespace UnstayedJunkSailMast
             }
 
             return true;
-        }
-
-        private static int ClaimMastIndex(BoatRefs refs, ref int nextIndex)
-        {
-            while (nextIndex < refs.masts.Length &&
-                   refs.masts[nextIndex] != null)
-            {
-                nextIndex++;
-            }
-
-            if (nextIndex >= refs.masts.Length)
-            {
-                throw new InvalidOperationException(
-                    "No free BoatRefs mast index remains for an unstayed mast.");
-            }
-
-            return nextIndex++;
         }
 
         private static string GetHierarchyPath(

@@ -433,7 +433,7 @@ namespace UnstayedJunkSailMast
                        MaxSurfaceFittingOffset * MaxSurfaceFittingOffset;
         }
 
-        private static string CreateSourceId(BoatPartOption source)
+        internal static string CreateSourceId(BoatPartOption source)
         {
             Mast mast = source.GetComponent<Mast>();
             return UnstayedNameRules.Normalize(source.optionName) + "|" +

@@ -5,6 +5,20 @@ using UnityEngine;
 
 namespace UnstayedJunkSailMast
 {
+    [HarmonyPatch(typeof(SaveLoadManager), "LoadNeeds")]
+    [HarmonyBefore(Plugin.ShipyardExpansionGuid)]
+    [HarmonyPriority(Priority.First)]
+    internal static class EarlyModDataLoadPatch
+    {
+        private static void Postfix(SaveContainer __0)
+        {
+            GameState.modData = __0 != null && __0.modData != null
+                ? __0.modData
+                : new Dictionary<string, string>();
+            UnstayedMastIndexCoordinator.RebindFromLoadedModData();
+        }
+    }
+
     [HarmonyPatch(typeof(SaveableBoatCustomization), "Awake")]
     [HarmonyAfter(Plugin.ShipyardExpansionGuid)]
     [HarmonyPriority(Priority.Last)]
@@ -127,7 +141,7 @@ namespace UnstayedJunkSailMast
             SaveableBoatCustomization __instance,
             SaveBoatCustomizationData data)
         {
-            UnstayedSaveCompatibility.RemapSavedOptions(__instance, data);
+            UnstayedSaveCompatibility.PrepareLoad(__instance, data);
         }
 
         private static void Postfix(SaveableBoatCustomization __instance)
@@ -296,6 +310,15 @@ namespace UnstayedJunkSailMast
     {
         private const char RecordSeparator = ';';
         private const char FieldSeparator = '=';
+        private const int IndexLayoutVersion = 2;
+
+        internal static void PrepareLoad(
+            SaveableBoatCustomization customization,
+            SaveBoatCustomizationData data)
+        {
+            RemapSavedOptions(customization, data);
+            MigrateMastIndices(customization, data);
+        }
 
         internal static void RecordActiveOptions(
             SaveableBoatCustomization customization,
@@ -307,6 +330,15 @@ namespace UnstayedJunkSailMast
             if (data == null ||
                 !UnstayedBoatRegistry.TryGet(parts, out profile) ||
                 GameState.modData == null)
+            {
+                return;
+            }
+
+            bool pendingLegacyMigration =
+                GetIndexLayoutVersion(profile.SceneIndex) <
+                    IndexLayoutVersion &&
+                HasActiveMastRecords(profile.SceneIndex);
+            if (pendingLegacyMigration)
             {
                 return;
             }
@@ -325,13 +357,11 @@ namespace UnstayedJunkSailMast
                     continue;
                 }
 
-                UnstayedMastMarker marker =
-                    mast.UnstayedOption.GetComponent<UnstayedMastMarker>();
-                if (marker != null && !string.IsNullOrEmpty(marker.SourceId))
+                if (!string.IsNullOrEmpty(mast.SourceId))
                 {
                     records.Add(
                         partIndex + FieldSeparator.ToString() +
-                        Uri.EscapeDataString(marker.SourceId));
+                        Uri.EscapeDataString(mast.SourceId));
                 }
             }
 
@@ -346,9 +376,12 @@ namespace UnstayedJunkSailMast
                     RecordSeparator.ToString(),
                     records.ToArray());
             }
+
+            GameState.modData[GetIndexLayoutKey(profile.SceneIndex)] =
+                IndexLayoutVersion.ToString();
         }
 
-        internal static void RemapSavedOptions(
+        private static void RemapSavedOptions(
             SaveableBoatCustomization customization,
             SaveBoatCustomizationData data)
         {
@@ -382,34 +415,254 @@ namespace UnstayedJunkSailMast
                     continue;
                 }
 
-                string sourceId = Uri.UnescapeDataString(
-                    records[i].Substring(separator + 1));
+                string sourceId;
+                try
+                {
+                    sourceId = Uri.UnescapeDataString(
+                        records[i].Substring(separator + 1));
+                }
+                catch (UriFormatException)
+                {
+                    continue;
+                }
+
+                UnstayedMastProfile match = null;
                 for (int j = 0; j < profile.Masts.Count; j++)
                 {
                     UnstayedMastProfile mast = profile.Masts[j];
-                    if (parts.availableParts.IndexOf(mast.MastPart) !=
-                        partIndex)
+                    if (mast.SourceId != sourceId)
                     {
                         continue;
                     }
 
-                    UnstayedMastMarker marker =
-                        mast.UnstayedOption.GetComponent<
-                            UnstayedMastMarker>();
-                    if (marker != null && marker.SourceId == sourceId)
+                    if (match == null)
                     {
-                        data.partActiveOptions[partIndex] =
-                            mast.MastPart.partOptions.IndexOf(
-                                mast.UnstayedOption);
+                        match = mast;
+                    }
+
+                    if (parts.availableParts.IndexOf(mast.MastPart) ==
+                        partIndex)
+                    {
+                        match = mast;
                         break;
                     }
                 }
+
+                if (match == null)
+                {
+                    continue;
+                }
+
+                int currentPartIndex =
+                    parts.availableParts.IndexOf(match.MastPart);
+                int currentOptionIndex =
+                    match.MastPart.partOptions.IndexOf(
+                        match.UnstayedOption);
+                if (currentPartIndex >= 0 &&
+                    currentPartIndex < data.partActiveOptions.Count &&
+                    currentOptionIndex >= 0)
+                {
+                    data.partActiveOptions[currentPartIndex] =
+                        currentOptionIndex;
+                }
             }
+        }
+
+        private static void MigrateMastIndices(
+            SaveableBoatCustomization customization,
+            SaveBoatCustomizationData data)
+        {
+            BoatCustomParts parts =
+                customization.GetComponent<BoatCustomParts>();
+            UnstayedBoatProfile profile;
+            if (data == null ||
+                !UnstayedBoatRegistry.TryGet(parts, out profile) ||
+                GameState.modData == null)
+            {
+                return;
+            }
+
+            HashSet<int> discardedIndices = new HashSet<int>();
+            if (profile.RetiredMastIndices != null)
+            {
+                for (int i = 0; i < profile.RetiredMastIndices.Count; i++)
+                {
+                    discardedIndices.Add(profile.RetiredMastIndices[i]);
+                }
+            }
+
+            bool legacyLayout = GetIndexLayoutVersion(profile.SceneIndex) <
+                                IndexLayoutVersion;
+            if (legacyLayout && HasActiveMastRecords(profile.SceneIndex))
+            {
+                HashSet<int> foreignIndices =
+                    FindForeignExtendedMastIndices(customization.transform);
+                for (int mastIndex =
+                         UnstayedMastIndexRules.ExtendedIndexStart;
+                     mastIndex <
+                         UnstayedMastIndexRules.MastArrayCapacity;
+                     mastIndex++)
+                {
+                    if (!foreignIndices.Contains(mastIndex))
+                    {
+                        discardedIndices.Add(mastIndex);
+                    }
+                }
+            }
+
+            int removedSails = RemoveSavedSails(data, discardedIndices);
+            int removedExpansionRecords =
+                RemoveShipyardExpansionSailRecords(
+                    profile.SceneIndex,
+                    discardedIndices);
+            if (removedSails > 0 || removedExpansionRecords > 0)
+            {
+                Plugin.LogSource?.LogWarning(
+                    "Migrated unstayed mast indices for scene " +
+                    profile.SceneIndex + "; discarded " + removedSails +
+                    " legacy sail(s) and " + removedExpansionRecords +
+                    " Shipyard Expansion sail setting record(s). " +
+                    "No refund is issued by this migration.");
+            }
+
+            GameState.modData[GetIndexLayoutKey(profile.SceneIndex)] =
+                IndexLayoutVersion.ToString();
+        }
+
+        private static int RemoveSavedSails(
+            SaveBoatCustomizationData data,
+            HashSet<int> discardedIndices)
+        {
+            if (data.sails == null || discardedIndices.Count == 0)
+            {
+                return 0;
+            }
+
+            int removed = 0;
+            for (int i = data.sails.Count - 1; i >= 0; i--)
+            {
+                SaveSailData sail = data.sails[i];
+                if (sail != null &&
+                    discardedIndices.Contains(sail.mastIndex))
+                {
+                    data.sails.RemoveAt(i);
+                    removed++;
+                }
+            }
+
+            return removed;
+        }
+
+        private static HashSet<int> FindForeignExtendedMastIndices(
+            Transform boat)
+        {
+            HashSet<int> result = new HashSet<int>();
+            if (boat == null)
+            {
+                return result;
+            }
+
+            Mast[] masts = boat.GetComponentsInChildren<Mast>(true);
+            for (int i = 0; i < masts.Length; i++)
+            {
+                Mast mast = masts[i];
+                if (mast != null &&
+                    UnstayedMastIndexRules.IsExtendedIndex(
+                        mast.orderIndex) &&
+                    mast.GetComponent<UnstayedMastMarker>() == null)
+                {
+                    result.Add(mast.orderIndex);
+                }
+            }
+
+            return result;
+        }
+
+        private static int RemoveShipyardExpansionSailRecords(
+            int sceneIndex,
+            HashSet<int> discardedIndices)
+        {
+            if (discardedIndices.Count == 0 || GameState.modData == null)
+            {
+                return 0;
+            }
+
+            string key = "SEboatSails." + sceneIndex;
+            string encoded;
+            if (!GameState.modData.TryGetValue(key, out encoded) ||
+                string.IsNullOrEmpty(encoded))
+            {
+                return 0;
+            }
+
+            int versionSeparator = encoded.LastIndexOf('|');
+            string recordsText = versionSeparator >= 0
+                ? encoded.Substring(0, versionSeparator)
+                : encoded;
+            string versionSuffix = versionSeparator >= 0
+                ? encoded.Substring(versionSeparator)
+                : string.Empty;
+            string[] records = recordsText.Split(
+                new[] { ')' },
+                StringSplitOptions.RemoveEmptyEntries);
+            List<string> kept = new List<string>();
+            int removed = 0;
+            for (int i = 0; i < records.Length; i++)
+            {
+                int open = records[i].IndexOf('(');
+                int mastIndex;
+                if (open <= 0 ||
+                    !int.TryParse(
+                        records[i].Substring(0, open),
+                        out mastIndex) ||
+                    !discardedIndices.Contains(mastIndex))
+                {
+                    kept.Add(records[i] + ")");
+                    continue;
+                }
+
+                removed++;
+            }
+
+            if (removed > 0)
+            {
+                GameState.modData[key] =
+                    string.Concat(kept.ToArray()) + versionSuffix;
+            }
+
+            return removed;
+        }
+
+        private static bool HasActiveMastRecords(int sceneIndex)
+        {
+            string encoded;
+            return GameState.modData.TryGetValue(
+                       GetKey(sceneIndex),
+                       out encoded) &&
+                   !string.IsNullOrEmpty(encoded);
+        }
+
+        private static int GetIndexLayoutVersion(int sceneIndex)
+        {
+            string encoded;
+            int version;
+            return GameState.modData.TryGetValue(
+                       GetIndexLayoutKey(sceneIndex),
+                       out encoded) &&
+                   int.TryParse(encoded, out version)
+                ? version
+                : 0;
         }
 
         private static string GetKey(int sceneIndex)
         {
             return Plugin.PluginGuid + "." + sceneIndex + ".activeMasts";
+        }
+
+        private static string GetIndexLayoutKey(int sceneIndex)
+        {
+            return Plugin.PluginGuid + "." + sceneIndex +
+                   ".indexLayoutVersion";
         }
     }
 }
