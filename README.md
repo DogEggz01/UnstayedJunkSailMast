@@ -7,5 +7,5 @@
   - It WILL affect the stability of your boat.
 - Unstayed mast can only install Junk sails, Junk square and fin sail (You cannot install junk gaff)
 - Unstayed mast cannot use crow nest, stays(so no jibs/staysail) and shroud telltales option(duh)
-
+- Add 2 new junk sail. Narrow Rectangle Junk and Wide Rectangle Junk.
 ## UPDATED FROM OLDER THAN 1.1.0 VERSION WILL CLEAR YOUR SAIL ON UNSTAYED MAST
