@@ -1,6 +1,6 @@
 # Unstayed Junk Sail Mast
 
-## SHIPYARD EXANSION MOD IS HARD REQUIREMENT
+## THIS MOD IS A SHIPYARD EXPANSION SUB-MOD
 ### https://github.com/NANDbrew/ShipyardExpansion/releases/latest 
 - Add unstayed mast option for Emerald Archipelagos ships - Kakam, Junk, Jong
   - Unstayed means no shroud, so your sail can turn 89 degree both side.
