@@ -13,11 +13,22 @@ namespace UnstayedJunkSailMast
         private const string ColorProperty = "_Color";
         private const string RenderTypeTag = "RenderType";
 
+        private static readonly string[] BoomRendererNames =
+        {
+            "boom_010",
+            "boom_011",
+            "boom_012",
+            "boom_013",
+            "boom_014"
+        };
+
         private static RendererState clothState;
         private static RendererState furledState;
         private static bool correctionLogged;
 
         internal static void CaptureAndApply(
+            GameObject targetSail,
+            GameObject sourceSail,
             Renderer targetCloth,
             Renderer sourceCloth,
             Renderer targetFurled,
@@ -27,6 +38,60 @@ namespace UnstayedJunkSailMast
             furledState = RendererState.Capture(sourceFurled);
             clothState.ApplyShared(targetCloth);
             furledState.ApplyShared(targetFurled);
+            ApplyBoomStates(targetSail, sourceSail);
+        }
+
+        private static void ApplyBoomStates(
+            GameObject targetSail,
+            GameObject sourceSail)
+        {
+            for (int i = 0; i < BoomRendererNames.Length; i++)
+            {
+                string rendererName = BoomRendererNames[i];
+                Renderer target = FindUniqueRenderer(
+                    targetSail,
+                    rendererName);
+                Renderer source = FindUniqueRenderer(
+                    sourceSail,
+                    rendererName);
+                RendererState.Capture(source).ApplyShared(target);
+            }
+        }
+
+        private static Renderer FindUniqueRenderer(
+            GameObject root,
+            string rendererName)
+        {
+            Renderer match = null;
+            Renderer[] renderers = root != null
+                ? root.GetComponentsInChildren<Renderer>(true)
+                : Array.Empty<Renderer>();
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer candidate = renderers[i];
+                if (candidate.gameObject.name != rendererName)
+                {
+                    continue;
+                }
+
+                if (match != null)
+                {
+                    throw new InvalidOperationException(
+                        "multiple renderers named " + rendererName +
+                        " were found in the Junk Square hierarchy");
+                }
+
+                match = candidate;
+            }
+
+            if (match == null)
+            {
+                throw new InvalidOperationException(
+                    "renderer " + rendererName +
+                    " is missing from the Junk Square hierarchy");
+            }
+
+            return match;
         }
 
         internal static void Normalize(GameObject sailObject)

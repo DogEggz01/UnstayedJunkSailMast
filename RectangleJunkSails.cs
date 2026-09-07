@@ -529,6 +529,8 @@ namespace UnstayedJunkSailMast
             // Narrow mesh, Cloth component, constraints, bones, and collision
             // stay untouched.
             RectangleJunkRenderState.CaptureAndApply(
+                target,
+                source,
                 targetCloth,
                 sourceCloth,
                 targetReef.furledSail,
