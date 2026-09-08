@@ -5,6 +5,12 @@ namespace UnstayedJunkSailMast
 {
     internal sealed class RectangleJunkSailRig : MonoBehaviour
     {
+        internal const float TangentialWindFraction = 0.5f;
+        internal const float StaticWindMultiplier = 1f;
+        internal const float BendingStiffness = 0.7f;
+
+        private const float OrdinaryJunkSolverFrequency = 120f;
+
         internal bool Initialize(Mast owningMast)
         {
             mast = owningMast;
@@ -20,13 +26,18 @@ namespace UnstayedJunkSailMast
                 : null;
             reefEffect = GetComponentInChildren<
                 ReefEffectAnimUniversal>(true);
+            windCloth = sail != null && sail.cloth != null
+                ? sail.cloth.GetComponent<WindCloth>()
+                : null;
             if (sail == null || connections == null ||
-                reefController == null || reefEffect == null)
+                reefController == null || reefEffect == null ||
+                sail.cloth == null || windCloth == null)
             {
                 return Fail(
                     "its reefing components are incomplete");
             }
 
+            ApplyRectangleJunkClothDynamics();
             ApplyControllerDirection();
             initialized = true;
             refreshClothPending = true;
@@ -127,6 +138,18 @@ namespace UnstayedJunkSailMast
             reefController.changed = true;
         }
 
+        private void ApplyRectangleJunkClothDynamics()
+        {
+            // Keep the authored mesh and constraints while applying the
+            // finalized Rectangle Junk visual tuning.
+            sail.cloth.bendingStiffness =
+                BendingStiffness;
+            sail.cloth.clothSolverFrequency =
+                OrdinaryJunkSolverFrequency;
+            windCloth.staticMultiplier =
+                StaticWindMultiplier;
+        }
+
         private void BindWinch(GPButtonRopeWinch winch)
         {
             if (boundWinch == winch)
@@ -189,6 +212,7 @@ namespace UnstayedJunkSailMast
         private Sail sail;
         private RopeControllerSailReef reefController;
         private ReefEffectAnimUniversal reefEffect;
+        private WindCloth windCloth;
         private GPButtonRopeWinch boundWinch;
         private bool originalWinchReverseResistance;
         private bool initialized;

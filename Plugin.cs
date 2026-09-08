@@ -13,7 +13,7 @@ namespace UnstayedJunkSailMast
     {
         public const string PluginGuid = "dogeggz.unstayedjunksailmast";
         public const string PluginName = "Unstayed Junk Sail Mast";
-        public const string PluginVersion = "1.2.7";
+        public const string PluginVersion = "1.2.8";
         public const string ShipyardExpansionGuid =
             "com.nandbrew.shipyardexpansion";
 

@@ -88,6 +88,50 @@ namespace UnstayedJunkSailMast
         }
     }
 
+    [HarmonyPatch(typeof(WindCloth), "Update")]
+    internal static class RectangleJunkWindClothPatch
+    {
+        private static void Prefix(
+            WindCloth __instance,
+            Sail ___sail,
+            Cloth ___cloth,
+            out bool __state)
+        {
+            __state = RectangleJunkSails.IsRectangle(___sail) &&
+                      ___cloth != null;
+            if (!__state)
+            {
+                return;
+            }
+
+            __instance.staticMultiplier =
+                RectangleJunkSailRig.StaticWindMultiplier;
+            ___cloth.bendingStiffness =
+                RectangleJunkSailRig.BendingStiffness;
+        }
+
+        private static void Postfix(
+            Sail ___sail,
+            Cloth ___cloth,
+            bool __state)
+        {
+            if (!__state)
+            {
+                return;
+            }
+
+            Vector3 acceleration = ___cloth.externalAcceleration;
+            Vector3 normalAcceleration = Vector3.Project(
+                acceleration,
+                ___sail.transform.up);
+            Vector3 tangentialAcceleration =
+                acceleration - normalAcceleration;
+            ___cloth.externalAcceleration = normalAcceleration +
+                tangentialAcceleration *
+                RectangleJunkSailRig.TangentialWindFraction;
+        }
+    }
+
     [HarmonyPatch(typeof(Mast), "UpdateControllerAttachments")]
     internal static class RectangleJunkMastAttachmentPatch
     {

@@ -542,6 +542,11 @@ namespace UnstayedJunkSailMast
             Sail sail = sailObject != null
                 ? sailObject.GetComponent<Sail>()
                 : null;
+            return IsRectangle(sail);
+        }
+
+        internal static bool IsRectangle(Sail sail)
+        {
             return sail != null && IsRectangleIndex(sail.prefabIndex);
         }
 
