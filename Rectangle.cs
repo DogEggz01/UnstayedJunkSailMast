@@ -1095,23 +1095,15 @@ namespace UnstayedJunkSailMast
     [HarmonyPatch(typeof(WindCloth), "Update")]
     internal static class RectangleJunkWindClothPatch
     {
+        // The Rectangle cloth's wind multiplier and bending are set once by RectangleJunkSailRig.Initialize; the game never
+        // rewrites them.
         private static void Prefix(
-            WindCloth __instance,
             Sail ___sail,
             Cloth ___cloth,
             out bool __state)
         {
             __state = RectangleJunkSails.IsRectangle(___sail) &&
                       ___cloth != null;
-            if (!__state)
-            {
-                return;
-            }
-
-            __instance.staticMultiplier =
-                RectangleJunkSailRig.StaticWindMultiplier;
-            ___cloth.bendingStiffness =
-                RectangleJunkSailRig.BendingStiffness;
         }
 
         private static void Postfix(

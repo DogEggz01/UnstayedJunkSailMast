@@ -917,6 +917,9 @@ namespace UnstayedJunkSailMast
                 new UnstayedMastIndexAllocator(
                     customization.transform,
                     saveable.sceneIndex);
+            BoatCustomColors paint =
+                customization.GetComponent<BoatCustomColors>();
+            List<MeshRenderer> paintedCopies = new List<MeshRenderer>();
 
             for (int i = 0; i < targetParts.Count; i++)
             {
@@ -965,6 +968,15 @@ namespace UnstayedJunkSailMast
 
                     mastPart.partOptions.Add(clone);
                     AddMutualRestrictions(clone, restrictedSelections);
+                    if (paint != null)
+                    {
+                        CollectPaintedCopies(
+                            paint.masts,
+                            source.transform,
+                            clone.transform,
+                            paintedCopies);
+                    }
+
                     mastProfiles.Add(new UnstayedMastProfile
                     {
                         MastPart = mastPart,
@@ -979,6 +991,10 @@ namespace UnstayedJunkSailMast
             }
 
             indexAllocator.Commit();
+            if (paintedCopies.Count > 0)
+            {
+                AddToMastPaint(paint, paintedCopies);
+            }
 
             if (mastProfiles.Count == 0)
             {
@@ -1279,6 +1295,7 @@ namespace UnstayedJunkSailMast
     {
         private const float DiameterScale = 1.41f;
         private const float MaxSurfaceFittingOffset = 1f;
+        private const string ScaledMastBodyName = "UJSM_scaled_mast_body";
 
         private static readonly HashSet<string> SmallJunkRemovedNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -1370,7 +1387,7 @@ namespace UnstayedJunkSailMast
                 Dictionary<Collider, Collider> visualColliderMap =
                     ExtractScaledRootBodyAndPlaceFittings(
                         cloneTransform,
-                        "UJSM_scaled_mast_body",
+                        ScaledMastBodyName,
                         true,
                         false);
                 Dictionary<Collider, Collider> walkColliderMap =
@@ -1408,6 +1425,68 @@ namespace UnstayedJunkSailMast
                     "Skipped " + sourceDisplayName + ": " + exception);
                 return null;
             }
+        }
+
+        // BoatCustomColors paints the renderers listed in its masts array, set
+        // in the scene, so a copy's renderers are never painted on their own.
+        // Each listed renderer of the source mast gets its copy's counterpart;
+        // the copy's root renderer is hidden and the enlarged body draws it.
+        private static void CollectPaintedCopies(
+            MeshRenderer[] painted,
+            Transform source,
+            Transform copy,
+            List<MeshRenderer> result)
+        {
+            if (painted == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < painted.Length; i++)
+            {
+                MeshRenderer renderer = painted[i];
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                Transform target;
+                if (renderer.transform == source)
+                {
+                    target = copy.Find(ScaledMastBodyName);
+                }
+                else if (renderer.transform.IsChildOf(source))
+                {
+                    target = copy.Find(
+                        GetHierarchyPath(renderer.transform, source));
+                }
+                else
+                {
+                    continue;
+                }
+
+                MeshRenderer copyRenderer = target != null
+                    ? target.GetComponent<MeshRenderer>()
+                    : null;
+                if (copyRenderer != null)
+                {
+                    result.Add(copyRenderer);
+                }
+            }
+        }
+
+        // The copies hold the source's materials from when they were made,
+        // before any saved colour loads; later paint reaches them through the
+        // list like the boat's own masts.
+        private static void AddToMastPaint(
+            BoatCustomColors paint,
+            List<MeshRenderer> renderers)
+        {
+            MeshRenderer[] masts = paint.masts;
+            int start = masts.Length;
+            Array.Resize(ref masts, start + renderers.Count);
+            renderers.CopyTo(masts, start);
+            paint.masts = masts;
         }
 
         private static void InitializeCloneTransforms(
